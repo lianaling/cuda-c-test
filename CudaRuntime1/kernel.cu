@@ -6,6 +6,10 @@
 #include <algorithm>
 #include <stdio.h>
 
+#include "Timer.h"
+
+const unsigned int ARR_SIZE = 1000;
+
 struct Coordinate
 {
     double x, y;
@@ -19,7 +23,7 @@ struct Coordinate
 
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
 
-cudaError_t pushBackWithCuda(const std::vector<Coordinate>* coordinates, std::vector<double> vec, unsigned int size);
+//cudaError_t pushBackWithCuda(const std::vector<Coordinate>* coordinates, std::vector<double> vec, unsigned int size);
 
 __global__ void addKernel(int *c, const int *a, const int *b)
 {
@@ -27,11 +31,11 @@ __global__ void addKernel(int *c, const int *a, const int *b)
     c[i] = a[i] + b[i];
 }
 
-//__global__ void pushBackKernel(const std::vector<Coordinate>* coordinates, std::vector<double>* vec)
-//{
-//    int i = threadIdx.x;
-//    vec[i].push_back()
-//}
+__global__ void pushBackKernel(const Coordinate *coord, double *vec)
+{
+    int i = threadIdx.x;
+    vec[i] = coord[i].x * coord[i].y;
+}
 
 // Helper function for using CUDA to add vectors in parallel.
 cudaError_t addWithCuda(int* c, const int* a, const int* b, unsigned int size)
@@ -114,90 +118,119 @@ Error:
 }
 
 // Helper function for using CUDA to push back doubles in parallel.
-//cudaError_t pushBackWithCuda(const std::vector<Coordinate>* coordinates, std::vector<double>* vec, unsigned int size)
-//{
-//    double* dev_coord = 0;
-//    double* dev_vec = 0;
-//    cudaError_t cudaStatus;
-//    size_t req_size = size * sizeof(double);
-//
-//    // Choose GPU
-//    cudaStatus = cudaSetDevice(0);
-//    if (cudaStatus != cudaSuccess) {
-//        fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
-//        goto Clean;
-//    }
-//
-//    // Allocate GPU memory for one input and one output
-//    cudaStatus = cudaMalloc((void**)&dev_coord, req_size);
-//    if (cudaStatus != cudaSuccess) {
-//        fprintf(stderr, "cudaMalloc failed!");
-//        goto Clean;
-//    }
-//
-//    cudaStatus = cudaMalloc((void**)&dev_vec, req_size);
-//    if (cudaStatus != cudaSuccess) {
-//        fprintf(stderr, "cudaMalloc failed!");
-//        goto Clean;
-//    }
-//
-//    // Copy input data from CPU to GPU
-//    cudaStatus = cudaMemcpy(dev_coord, coordinates, req_size, cudaMemcpyHostToDevice);
-//    if (cudaStatus != cudaSuccess) {
-//        fprintf(stderr, "cudaMemcpy failed!");
-//        goto Clean;
-//    }
-//
-//    // Launch a kernel on the GPU with one thread for each element
-//    addKernel<<<1, size>>>(dev_coord, dev_vec);
-//
-//    // Check for any errors launching the kernel
-//    cudaStatus = cudaGetLastError();
-//    if (cudaStatus != cudaSuccess) {
-//        fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
-//        goto Clean;
-//    }
-//
-//    // Wait for kernel to finish
-//    cudaStatus = cudaDeviceSynchronize();
-//    if (cudaStatus != cudaSuccess) {
-//        fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
-//        goto Clean;
-//    }
-//
-//    // Copy output data from GPU to CPU
-//    cudaStatus = cudaMemcpy(vec, dev_vec, req_size, cudaMemcpyDeviceToHost);
-//    if (cudaStatus != cudaSuccess) {
-//        fprintf(stderr, "cudaMemcpy failed!");
-//        goto Clean;
-//    }
-//
-//    // Clean up after operation
-//    goto Clean;
-//
-//Clean:
-//    cudaFree(dev_coord);
-//    cudaFree(dev_vec);
-//
-//    return cudaStatus;
-//}
+cudaError_t pushBackWithCuda(const Coordinate* coordinates, double* vector, unsigned int size)
+{
+    Coordinate* dev_coord = 0;
+    double* dev_vec = 0;
+    cudaError_t cudaStatus;
+    size_t req_size = size * sizeof(double);
+    /*double coord[ARR_SIZE];
+    double vec[ARR_SIZE];*/
+
+    //for (int i = 0; i < size; i++)
+    //{
+    //    //coord[i] = coordinates->at(i).x * coordinates->at(i).y;
+    //    //vec[i] = vector->at(i);
+    //}
+
+    // Choose GPU
+    cudaStatus = cudaSetDevice(0);
+    if (cudaStatus != cudaSuccess) {
+        fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
+        goto Clean;
+    }
+
+    // Allocate GPU memory for one input and one output
+    cudaStatus = cudaMalloc((void**)&dev_coord, req_size);
+    if (cudaStatus != cudaSuccess) {
+        fprintf(stderr, "cudaMalloc failed!");
+        goto Clean;
+    }
+
+    cudaStatus = cudaMalloc((void**)&dev_vec, req_size);
+    if (cudaStatus != cudaSuccess) {
+        fprintf(stderr, "cudaMalloc failed!");
+        goto Clean;
+    }
+
+    // Copy input data from CPU to GPU
+    cudaStatus = cudaMemcpy(dev_coord, coordinates, req_size, cudaMemcpyHostToDevice);
+    if (cudaStatus != cudaSuccess) {
+        fprintf(stderr, "cudaMemcpy failed!");
+        goto Clean;
+    }
+
+    // Launch a kernel on the GPU with one thread for each element
+    pushBackKernel<<<1, size>>>(dev_coord, dev_vec);
+
+    // Check for any errors launching the kernel
+    cudaStatus = cudaGetLastError();
+    if (cudaStatus != cudaSuccess) {
+        fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+        goto Clean;
+    }
+
+    // Wait for kernel to finish
+    cudaStatus = cudaDeviceSynchronize();
+    if (cudaStatus != cudaSuccess) {
+        fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
+        goto Clean;
+    }
+
+    // Copy output data from GPU to CPU
+    cudaStatus = cudaMemcpy(vector, dev_vec, req_size, cudaMemcpyDeviceToHost);
+    if (cudaStatus != cudaSuccess) {
+        fprintf(stderr, "cudaMemcpy failed!");
+        goto Clean;
+    }
+
+    /*for (int i = 0; i < size; i++) {
+        vector->push_back(vec[i]);
+    }*/
+
+    // Clean up after operation
+    goto Clean;
+
+Clean:
+    cudaFree(dev_coord);
+    cudaFree(dev_vec);
+
+    return cudaStatus;
+}
 
 double CalculateGradient(const std::vector<Coordinate>& coordinates)
 {
+    auto timer = Timer("CalculateGradient");
+
+    //printf("3) x: %.2f y: %.2f\n", coordinates.at(2).x, coordinates.at(2).y);
 
     // num of coordinate
     int n = coordinates.size();
+    // Declare array pointer
+    const Coordinate* coord = &coordinates[0];
 
     // sum of x*y
     // loop through all coordinates
     // push corresponding x*y to vector
     // add all elements in the vector
-    std::vector<double> vec_xy;
-    for (int i = 0; i < n; i++)
+    double vec_xy[ARR_SIZE];
+    /*for (int i = 0; i < n; i++)
     {
         vec_xy.push_back(coordinates.at(i).x * coordinates.at(i).y);
     }
-    double sum_xy = std::accumulate(vec_xy.begin(), vec_xy.end(), 0.0);
+    double sum_xy = std::accumulate(vec_xy.begin(), vec_xy.end(), 0.0);*/
+
+    printf("3) x: %.2f y: %.2f\n", coordinates.at(2).x, coordinates.at(2).y);
+    pushBackWithCuda(coord, vec_xy, n);
+    //double sum_xy = std::accumulate(vec_xy.begin(), vec_xy.end(), 0.0);
+    double sum_xy = 0;
+    for (int i = 0; i < n; i++) {
+        sum_xy += vec_xy[i];
+        printf("%d) Result: %.2f\n", i, vec_xy[i]);
+        printf("%d) x: %.2f y: %.2f\n", i, coordinates.at(i).x, coordinates.at(i).y); // FIXME: Coordinates all 0
+    }
+
+    printf("sum_xy: %.2f\n", sum_xy);
 
     // sum of x
     std::vector<double> vec_x;
@@ -229,6 +262,7 @@ double CalculateGradient(const std::vector<Coordinate>& coordinates)
 double CalculateYIntercept(const std::vector<Coordinate>& coordinates, const double gradient)
 {
     // num of coordinates
+
     int n = coordinates.size();
 
     // sum of y
@@ -259,7 +293,9 @@ int main()
     int c[arraySize] = { 0 };
 
     // Test data: y = 2x + 2
-    const std::vector<Coordinate> coordinates = { Coordinate{-1, 0}, Coordinate{0,2}, Coordinate{2,6}, Coordinate{4,10}, Coordinate{5,12} };
+    std::vector<Coordinate> coordinates = { Coordinate{-1, 0}, Coordinate{0,2}, Coordinate{2,6}, Coordinate{4,10}, Coordinate{5,12} };
+
+    printf("main(): coordinates - x is %.2f and y is %.2f\n", coordinates.at(2).x, coordinates.at(2).y); // Coordinate values working
 
     const double gradient = CalculateGradient(coordinates);
 
@@ -284,6 +320,13 @@ int main()
         fprintf(stderr, "cudaDeviceReset failed!");
         return 1;
     }
+
+    std::vector<int> test{ 1,2,3,4,5 };
+    int* test_arr = &test[0];
+
+    for (int i = 0; i < 5; i++)
+        std::cout << test_arr[i] << " ";
+    std::cout << "\n";
 
     return 0;
 }
